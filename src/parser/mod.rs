@@ -2,10 +2,10 @@ use pest::Parser;
 use pest_derive::Parser;
 
 pub mod ast;
+pub mod evaluator;
 mod clause;
 mod expression;
 mod statement;
-mod evaluator;
 
 #[derive(Parser)]
 #[grammar = "parser/sql.pest"]
