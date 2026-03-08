@@ -1,26 +1,48 @@
+use crate::parser::ast::Expr;
+use crate::parser::evaluator::Evaluator;
+
 mod error;
 mod parser;
 mod executor;
 mod storage;
 
 fn main() {
-    let examples = [
-        "SELECT * FROM users;",
-        "SELECT id, name AS \"n\" FROM users WHERE age >= 18 AND active = 1 ORDER BY name;",
-        "CREATE TABLE users (id INTEGER, name VARCHAR(255));",
-        "INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob');",
-        "SELECT a + b * c FROM t;",            // tests precedence
-        "SELECT -x + 1 FROM t;",               // tests unary minus
-        "SELECT * FROM t WHERE NOT a = 1 OR b > 2;", // tests NOT and OR
-    ];
+    println!("Enter SQL commands (type 'exit' to quit):");
+    let mut executor = executor::Executor::new();
 
-    for sql in &examples {
-        println!("SQL: {sql}");
-        match parser::parse(sql) {
-            Ok(stmt) => {
-                println!("AST: {stmt:#?}\n");
-            },
-            Err(e) => println!("ERR: {e}\n"),
+    loop {
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input).expect("Failed to read line");
+        let input = input.trim();
+
+        if input.eq_ignore_ascii_case("exit") {
+            break;
+        }
+
+        if input.eq_ignore_ascii_case("!print") {
+            println!("Current tables in memory:");
+            for (table_name, table) in &executor.context.tables {
+                println!("Table: {}", table_name);
+                println!("Columns:");
+                for column in &table.columns {
+                    println!("  - {} ({:?})", column.name, column.data_type);
+                }
+                println!("Rows:");
+                for row in &table.rows {
+                    println!("  - {:?}", row.values);
+                }
+            }
+            continue;
+        }
+
+        match parser::parse(input) {
+            Ok(statement) => {
+                match executor.execute(statement) {
+                    Ok(result) => println!("Execution result: {:?}", result),
+                    Err(e) => eprintln!("Execution error: {}", e),
+                }
+            }
+            Err(e) => eprintln!("Parse error: {}", e),
         }
     }
 }
