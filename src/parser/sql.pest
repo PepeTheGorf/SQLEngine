@@ -1,0 +1,96 @@
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+
+number = @{ ASCII_DIGIT+ }
+string = @{ "'" ~ (!"'" ~ ANY)* ~ "'" }
+
+keyword = @{
+    ( ^"SELECT" | ^"FROM" | ^"WHERE" | ^"ORDER" | ^"BY"
+    | ^"CREATE" | ^"TABLE" | ^"INSERT" | ^"INTO" | ^"VALUES"
+    | ^"AND" | ^"OR" | ^"NOT" | ^"AS"
+    | ^"INTEGER" | ^"VARCHAR"
+    ) ~ !(ASCII_ALPHANUMERIC | "_")
+}
+
+identifier = @{ !keyword ~ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
+
+data_type = {
+    ^"INTEGER"
+  | ^"VARCHAR" ~ "(" ~ number ~ ")"
+}
+
+column_definition = {
+    identifier ~ data_type
+}
+
+column_definition_list = {
+    column_definition ~ ("," ~ column_definition)*
+}
+
+add = { "+" }
+sub = { "-" }
+mul = { "*" }
+div = { "/" }
+
+lte = { "<=" }
+gte = { ">=" }
+neq = { "!=" | "<>" }
+lt  = { "<" }
+gt  = { ">" }
+eq  = { "=" }
+
+and_op = @{ ^"AND" ~ !(ASCII_ALPHANUMERIC | "_") }
+or_op  = @{ ^"OR" ~ !(ASCII_ALPHANUMERIC | "_") }
+
+bin_op = _{ add | sub | mul | div | lte | gte | neq | lt | gt | eq | and_op | or_op }
+
+neg = { "-" }
+not_op = { ^"NOT" }
+prefix_op = _{ neg | not_op }
+
+primary = {
+    number
+  | string
+  | identifier
+  | "(" ~ expression ~ ")"
+}
+
+expression = { prefix_op* ~ primary ~ (bin_op ~ prefix_op* ~ primary)* }
+
+column_alias = { ^"AS" ~ "\"" ~ identifier ~ "\"" }
+
+expression_list = {
+    (expression ~ column_alias?) ~ ("," ~ expression ~ column_alias?)*
+}
+
+where_clause = { ^"WHERE" ~ expression }
+
+order_by_clause = { ^"ORDER" ~ ^"BY" ~ identifier }
+
+select_statement = {
+    ^"SELECT" ~ (select_all | expression_list) ~
+    ^"FROM" ~ identifier ~
+    where_clause? ~
+    order_by_clause? ~ ";"
+}
+select_all = { "*" }
+
+value = { expression }
+
+insert_value = {
+    "(" ~ value ~ ("," ~ value)* ~ ")"
+}
+
+insert_value_list = {
+    insert_value ~ ("," ~ insert_value)*
+}
+
+create_statement = {
+    ^"CREATE" ~ ^"TABLE" ~ identifier ~ "(" ~ column_definition_list ~ ")" ~ ";"
+}
+
+insert_statement = {
+    ^"INSERT" ~ ^"INTO" ~ identifier ~ ^"VALUES" ~
+    insert_value_list ~ ";"
+}
+
+statement = { create_statement | insert_statement | select_statement ~ EOI }
