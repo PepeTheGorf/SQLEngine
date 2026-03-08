@@ -1,6 +1,7 @@
 use crate::executor::{ExecutionError, ExecutionResult, Executor};
-use crate::parser::ast::Expr;
-use crate::storage::data_structures::{Row, Value};
+use crate::parser::ast::{Expr};
+use crate::parser::evaluator::Evaluator;
+use crate::storage::data_structures::Row;
 
 impl Executor {
     pub fn execute_insert(
@@ -9,19 +10,30 @@ impl Executor {
         values: Vec<Vec<Expr>>,
     ) -> Result<ExecutionResult, ExecutionError> {
 
-        let table = self
-            .context()
-            .tables()
+        let table = self.context
+            .tables
             .get_mut(&table_name)
-            .ok_or(ExecutionError::TableNotFound(table_name.clone()))?;
+            .ok_or_else(|| ExecutionError::TableNotFound(table_name.clone()))?;
 
-        let mut affected_rows = 0;
+        for row_values in &values {
+            if row_values.len() != table.columns.len() {
+                return Err(ExecutionError::Other(format!(
+                    "Column count mismatch: expected {}, got {}",
+                    table.columns.len(),
+                    row_values.len()
+                )));
+            }
+            let mut row = Row { values: Vec::new() };
+            for (column, expression) in table.columns.iter().zip(row_values.iter()) {
+                let value = Evaluator::evaluate(expression.clone(), &None)
+                    .map_err(|e| ExecutionError::Other(format!("Failed to evaluate expression: {:?}", e)))?;
 
-        for row_values in values {
-            let mut row = Row {
-                values: Vec::new(),
-            };
+                column.data_type.validate(&value)?;
 
+                row.values.push(value);
+            }
+            table.rows.push(row);
         }
+        Ok(ExecutionResult::AffectedRows(values.len()))
     }
 }
