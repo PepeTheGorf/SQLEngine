@@ -7,9 +7,9 @@ use crate::executor::iterators::Operator;
 use crate::executor::iterators::projection::Projection;
 use crate::executor::iterators::selection::Selection;
 use crate::executor::iterators::table_scan::TableScan;
-use crate::parser::ast::Statement;
+use crate::parser::ast::{SelectColumns, Statement};
 use crate::storage::codec::decode_row;
-use crate::storage::data_structures::{Row, Table};
+use crate::storage::data_structures::{Row, Table, Value};
 use crate::storage::files::serial::SerialFile;
 
 pub(crate) mod context;
@@ -39,6 +39,62 @@ impl Executor {
         !todo!("Load tables metadata from disk into memory")
     }
 
+    fn print_table_data(data: Vec<Row>) {
+        for row in data {
+            println!("{:?}", row);
+        }
+    }
+
+    fn print_table_header(table: &Table, columns: &SelectColumns, data: Vec<Row>) {
+        let columns: Vec<String> = match columns {
+            SelectColumns::All => table.columns.iter().map(|col| col.name.clone()).collect(),
+            SelectColumns::Expressions(items) => items.iter().map(|item| item.alias.clone().unwrap_or_else(|| format!("{:?}", item.expr))).collect(),
+        };
+
+
+        let mut length = columns.iter().map(|name| name.len()).max().unwrap() + 2;
+        let length_data = data.iter()
+            .map(|row| row.values.iter()
+                .map(|value| format!("{:?}", value).len())
+                .max()
+                .unwrap_or(0) + 2)
+            .max().unwrap_or(0);
+        length = usize::max(length, length_data);
+
+        let mut line = String::new();
+        for _ in columns.clone() {
+            line += format!("+{}", "-".repeat(length)).as_str();
+        }
+        line += "+";
+        println!("{}", line);
+        for (index, name) in columns.iter().enumerate() {
+            if index == columns.len() - 1 {
+                print!("| {}{}|", name, " ".repeat(length - name.len() - 1));
+            } else {
+                print!("| {}{}", name, " ".repeat(length - name.len() - 1));
+            }
+        }
+        println!();
+        println!("{}", line);
+
+        for row in data {
+            for (index, value) in row.values.iter().enumerate() {
+                let value_str = format!("{}", match value {
+                    Value::Integer(i) => i.to_string(),
+                    Value::Varchar(s) => s.clone(),
+                });
+                if index == row.values.len() - 1 {
+                    print!("| {}{}|", value_str, " ".repeat(length - value_str.len() - 1));
+                } else {
+                    print!("| {}{}", value_str, " ".repeat(length - value_str.len() - 1));
+                }
+            }
+            println!();
+        }
+
+        println!("{}", line);
+    }
+
     pub fn execute(&mut self, statement: Statement) -> Result<ExecutionResult, ExecutionError> {
         match statement {
             Statement::Select { from, columns, where_clause, order_by } => {
@@ -49,6 +105,8 @@ impl Executor {
                     .tables
                     .get(&from)
                     .ok_or_else(|| ExecutionError::TableNotFound(from.clone()))?;
+
+                let original_columns = columns.clone();
 
                 let columns = crate::parser::binder::bind_select_columns(columns, &table.column_index)?;
                 let where_clause = crate::parser::binder::bind_where_clause(where_clause, &table.column_index)?;
@@ -63,13 +121,13 @@ impl Executor {
                 let mut projection: Box<dyn Operator> = Box::new(Projection::new(selection, columns));
 
                 let mut row_count = 0;
+                let mut rows = vec![];
                 projection.open();
                 while let Some(row) = projection.next() {
-                    println!("{:?}", row);
+                    rows.push(row);
                     row_count += 1;
                 }
                 projection.close();
-
 
                 let duration = start.elapsed();
 
@@ -77,6 +135,8 @@ impl Executor {
                 let millis = duration.as_secs_f64() * 1000.0;
 
                 println!("Time taken: {} µs ({:.3} ms)", micros, millis);
+
+                Self::print_table_header(table, &original_columns, rows);
 
                 Ok(ExecutionResult::AffectedRows(row_count))
             }
