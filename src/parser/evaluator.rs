@@ -1,33 +1,26 @@
-use std::collections::HashMap;
-use std::fmt::Display;
+use std::fmt;
+
 use crate::parser::ast::{BinOp, Expr, UnaryOp};
 use crate::storage::data_structures::Value;
 
 pub struct Evaluator;
 
 impl Evaluator {
-    pub fn evaluate(expression: Expr, row_values: &Option<HashMap<String, Value>>) -> Result<Value, EvaluationError> {
+    pub fn evaluate(expression: &Expr, row_values: &[Value]) -> Result<Value, EvaluationError> {
         match expression {
-            Expr::Number(n) => Ok(Value::Integer(n)),
-            Expr::StringLit(s) => Ok(Value::Varchar(s)),
-            Expr::Identifier(name) => {
-                if let Some(values) = row_values {
-                    values.get(&name)
-                        .cloned()
-                        .ok_or(EvaluationError::ColumnNotFound(name))
-                } else {
-                    Err(EvaluationError::NoRowContext(name))
-                }
-            }
+            Expr::Number(n) => Ok(Value::Integer(*n)),
+            Expr::StringLit(s) => Ok(Value::Varchar(s.clone())),
+            Expr::ColumnIndex(index) => Ok(row_values[*index].clone()),
             Expr::BinaryOp { left, op, right } => {
-                let left_val = Self::evaluate(*left, row_values)?;
-                let right_val = Self::evaluate(*right, row_values)?;
-                Self::apply_binary_op(left_val, op, right_val)
+                let left_val = Self::evaluate(left, row_values)?;
+                let right_val = Self::evaluate(right, row_values)?;
+                Self::apply_binary_op(left_val, op.clone(), right_val)
             }
             Expr::UnaryOp { op, expr } => {
-                let val = Self::evaluate(*expr, row_values)?;
-                Self::apply_unary_op(op, val)
+                let val = Self::evaluate(expr, row_values)?;
+                Self::apply_unary_op(op.clone(), val)
             }
+            _ => Err(EvaluationError::NoRowContext(format!("{:?}", expression))),
         }
     }
 
@@ -134,8 +127,8 @@ pub enum EvaluationError {
 }
 
 
-impl Display for EvaluationError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl std::fmt::Display for EvaluationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             EvaluationError::ColumnNotFound(col) => {
                 write!(f, "Column '{}' not found in current row", col)
@@ -164,27 +157,40 @@ mod tests {
 
     #[test]
     fn test_evaluate_simple_expressions() {
-        assert_eq!(Evaluator::evaluate(Expr::Number(42), &None).unwrap(), Value::Integer(42));
-        assert_eq!(Evaluator::evaluate(Expr::StringLit("hello".to_string()), &None).unwrap(), Value::Varchar("hello".to_string()));
+        let empty_row: [Value; 0] = [];
+
+        let expr = Expr::Number(42);
+        assert_eq!(
+            Evaluator::evaluate(&expr, &empty_row).unwrap(),
+            Value::Integer(42)
+        );
+
+        let expr = Expr::StringLit("hello".to_string());
+        assert_eq!(
+            Evaluator::evaluate(&expr, &empty_row).unwrap(),
+            Value::Varchar("hello".to_string())
+        );
     }
 
     #[test]
     fn test_evaluate_binary_ops() {
+        let empty_row: [Value; 0] = [];
         let expr = Expr::BinaryOp {
             left: Box::new(Expr::Number(1)),
             op: BinOp::Add,
             right: Box::new(Expr::Number(2)),
         };
-        assert_eq!(Evaluator::evaluate(expr, &None).unwrap(), Value::Integer(3));
+        assert_eq!(Evaluator::evaluate(&expr, &empty_row).unwrap(), Value::Integer(3));
     }
 
     #[test]
     fn test_evaluate_unary_ops() {
+        let empty_row: [Value; 0] = [];
         let expr = Expr::UnaryOp {
             op: UnaryOp::Neg,
             expr: Box::new(Expr::Number(5)),
         };
-        assert_eq!(Evaluator::evaluate(expr, &None).unwrap(), Value::Integer(-5));
+        assert_eq!(Evaluator::evaluate(&expr, &empty_row).unwrap(), Value::Integer(-5));
     }
 
     #[test]
@@ -193,26 +199,25 @@ mod tests {
             left: Box::new(Expr::UnaryOp {
                 op: UnaryOp::Not,
                 expr: Box::new(Expr::BinaryOp {
-                    left: Box::new(Expr::Identifier("a".to_string())),
+                    left: Box::new(Expr::ColumnIndex(0)),
                     op: BinOp::Eq,
                     right: Box::new(Expr::Number(1)),
                 }),
             }),
             op: BinOp::Or,
             right: Box::new(Expr::BinaryOp {
-                left: Box::new(Expr::Identifier("b".to_string())),
+                left: Box::new(Expr::ColumnIndex(1)),
                 op: BinOp::Gt,
                 right: Box::new(Expr::Number(2)),
             }),
         };
-        let row_values = Some(HashMap::from([
-            ("a".to_string(), Value::Integer(0)),
-            ("b".to_string(), Value::Integer(3)),
-        ]));
-        assert_eq!(Evaluator::evaluate(expr, &row_values).unwrap(), Value::Integer(1)); // true
+        let row_values = vec![Value::Integer(0), Value::Integer(3)];
+        assert_eq!(Evaluator::evaluate(&expr, &row_values).unwrap(), Value::Integer(1)); // true
     }
 
+    #[test]
     fn test_evaluate_complex_math_expression() {
+        let empty_row: [Value; 0] = [];
         let expr = Expr::BinaryOp {
             left: Box::new(Expr::Number(1)),
             op: BinOp::Add,
@@ -222,10 +227,12 @@ mod tests {
                 right: Box::new(Expr::Number(3)),
             }),
         };
-        assert_eq!(Evaluator::evaluate(expr, &None).unwrap(), Value::Integer(7)); // tests precedence
+        assert_eq!(Evaluator::evaluate(&expr, &empty_row).unwrap(), Value::Integer(7)); // tests precedence
     }
 
+    #[test]
     fn test_evaluate_parenthesized_expression() {
+        let empty_row: [Value; 0] = [];
         let expr = Expr::BinaryOp {
             left: Box::new(Expr::BinaryOp {
                 left: Box::new(Expr::Number(1)),
@@ -235,7 +242,7 @@ mod tests {
             op: BinOp::Mul,
             right: Box::new(Expr::Number(3)),
         };
-        assert_eq!(Evaluator::evaluate(expr, &None).unwrap(), Value::Integer(9)); // tests parentheses
+        assert_eq!(Evaluator::evaluate(&expr, &empty_row).unwrap(), Value::Integer(9)); // tests parentheses
     }
 }
 

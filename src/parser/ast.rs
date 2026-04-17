@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use crate::executor::ExecutionError;
 use crate::storage::data_structures::Value;
 
@@ -28,6 +29,7 @@ pub enum Expr {
     Number(i64),
     StringLit(String),
     Identifier(String),
+    ColumnIndex(usize),
     BinaryOp {
         left: Box<Expr>,
         op: BinOp,
@@ -56,28 +58,13 @@ pub struct OrderBy {
     pub column: String,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum DataType {
     Integer,
     Varchar(u32),
 }
 
-impl DataType {
-    pub fn validate(&self, value: &Value) -> Result<(), ExecutionError> {
-        match (self, value) {
-            (DataType::Integer, Value::Integer(_)) => Ok(()),
-
-            (DataType::Varchar(len), Value::Varchar(s)) if s.len() <= *len as usize => Ok(()),
-
-            (DataType::Varchar(len), Value::Varchar(_)) =>
-                Err(ExecutionError::Other(format!("Varchar too long (max {})", len))),
-
-            _ => Err(ExecutionError::Other("Type mismatch".into()))
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ColumnDef {
     pub name: String,
     pub data_type: DataType,

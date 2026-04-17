@@ -1,6 +1,7 @@
 WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
 
 number = @{ ASCII_DIGIT+ }
+float_number = @{ ASCII_DIGIT* ~ "." ~ ASCII_DIGIT+ }
 string = @{ "'" ~ (!"'" ~ ANY)* ~ "'" }
 
 keyword = @{

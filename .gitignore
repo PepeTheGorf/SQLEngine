@@ -1,2 +1,7 @@
 /target
 .idea
+**/*.rs.bk
+*.iml
+
+/catalog/
+/storage/
