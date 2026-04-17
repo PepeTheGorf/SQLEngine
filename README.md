@@ -72,3 +72,21 @@ WHERE Plata > 300;
 | 3                | Test3            | 2000             |
 +------------------+------------------+------------------+
 ```
+
+## Planirane funkcionalnosti
+
+### Indeksi
+
+* Implementacija B+ stabla za efikasnu pretragu po indeksiranim kolonama
+* Podrška za range query operacije (npr. `WHERE kolona > vrednost`)
+
+### ORDER BY
+
+* Sortiranje rezultata po jednoj ili više kolona
+* Podrška za ASC (rastući) i DESC (opadajući) redosled
+
+### Buffer Manager
+
+* Upravljanje učitavanjem i izbacivanjem stranica iz memorije
+* Implementacija LRU (Least Recently Used) strategije keširanja
+* Smanjenje broja pristupa disku kroz keširanje često korišćenih stranica
